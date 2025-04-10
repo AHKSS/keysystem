@@ -1,12 +1,6 @@
 {
-  "name": "key-system",
-  "version": "1.0.0",
-  "main": "index.js",
   "dependencies": {
-    "express": "^4.17.1"
-  },
-  "devDependencies": {},
-  "scripts": {
-    "start": "node index.js"
+    "lowdb": "^6.0.1",
+    "nanoid": "^4.0.0"
   }
 }
