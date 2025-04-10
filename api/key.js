@@ -1,27 +1,52 @@
-// api/key.js
-import { nanoid } from 'nanoid';
+import { Low } from 'lowdb'
+import { JSONFile } from 'lowdb/node'
+import { nanoid } from 'nanoid'
+import path from 'path'
 
-const keys = {}; // Hafızada saklanan key'ler: { ip: { key, used } }
+// Dosya yolu ayarla (Vercel'de doğru çalışması için tam yol)
+const file = path.resolve('./db.json')
+const adapter = new JSONFile(file)
+const db = new Low(adapter)
+
+// Veritabanını yükle
+await db.read()
+db.data ||= { keys: [] }
 
 export default async function handler(req, res) {
-  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
 
+  if (!ip) return res.status(400).json({ message: "IP alınamadı." })
+
+  // Yeni key üretme
   if (req.method === 'POST') {
-    // Yeni key oluştur
-    const key = nanoid(12);
-    keys[ip] = { key, used: false };
-    return res.status(200).json({ key });
+    const existing = db.data.keys.find(entry => entry.ip === ip)
+
+    if (existing && !existing.used) {
+      return res.status(200).json({ key: existing.key })
+    }
+
+    const key = nanoid(12)
+    db.data.keys.push({ ip, key, used: false })
+    await db.write()
+
+    return res.status(200).json({ key })
   }
 
+  // Key doğrulama
   if (req.method === 'GET') {
-    const { key: providedKey } = req.query;
+    const { key: providedKey } = req.query
 
-    if (!keys[ip]) return res.status(403).json({ success: false, message: "Key yok." });
-    if (keys[ip].used) return res.status(403).json({ success: false, message: "Key zaten kullanıldı." });
-    if (keys[ip].key !== providedKey) return res.status(403).json({ success: false, message: "Key yanlış." });
+    const record = db.data.keys.find(entry => entry.ip === ip)
 
-    keys[ip].used = true;
-    return res.status(200).json({ success: true });
+    if (!record) return res.status(403).json({ success: false, message: "Key bulunamadı." })
+    if (record.used) return res.status(403).json({ success: false, message: "Key zaten kullanıldı." })
+    if (record.key !== providedKey) return res.status(403).json({ success: false, message: "Key yanlış." })
+
+    record.used = true
+    await db.write()
+
+    return res.status(200).json({ success: true })
   }
 
-  return res.status(405).json({ message: 'Method Not
+  return res.status(405).json({ message: "Method Not Allowed" })
+}
